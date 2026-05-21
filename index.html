@@ -97,7 +97,10 @@ const ORDER  = ["star", "blob", "ring", "twist", "donut"];
 const NAMES  = {'star':'star','blob':'blob','twist':'twist','ring':'ring','donut':'donut'};
 
 let idx=0, playing=false, muted=false;
-let t=0, beat=0, beatVel=0, breathe=0;
+let t=0, breathe=0;
+let smoothScale=1.0, smoothY=0, smoothX=0;
+let beatPhase=0, beatEnv=0;
+let rotSpeed=0, contRot=0, mx=0;
 let isMobile = window.innerWidth<=480;
 window.addEventListener('resize',()=>{isMobile=window.innerWidth<=480;});
 
@@ -190,40 +193,37 @@ stage.addEventListener('touchend',()=>{mx=0;my=0;});
 function animate(){
   requestAnimationFrame(animate);
   const active = playing && !muted;
-  const spd = active?1.0:0.3;
-  t+=0.016*spd; breathe+=0.016*0.55;
-
-  const bps=active?2.1:0.5;
-  const raw=Math.max(0,Math.pow(Math.sin(t*bps*Math.PI),6));
-  beatVel+=(raw-beat)*0.6; beatVel*=0.58;
-  beat+=beatVel; beat=Math.max(0,Math.min(1.2,beat));
-
-  const ps=isMobile?12:24;
-  curX+=(mx*ps-curX)*0.07;
-  curY+=(my*(isMobile?8:16)-curY)*0.07;
-
-  const breatheScale=1+Math.sin(breathe)*0.025;
-  const sc=breatheScale+(active?beat*0.14:0.02*Math.sin(breathe));
-  const floatY=Math.sin(t*0.85)*(active?(isMobile?8:12):(isMobile?2:4));
-  const beatDrop=active?-beat*(isMobile?18:26):0;
-  const rot=curX*(isMobile?0.4:0.8);
-  imgEl.style.transform=`translateY(${(curY+floatY+beatDrop).toFixed(2)}px) translateX(${curX.toFixed(2)}px) scale(${sc.toFixed(4)}) rotate(${rot.toFixed(2)}deg)`;
-
-  const rgb=COLORS[ORDER[idx]].bar;
-  bars.forEach((b,i)=>{
-    const f=i/N,edge=Math.sin(f*Math.PI);
-    let h;
-    if(active){
-      const w1=Math.pow(Math.max(0,Math.sin(t*bps*Math.PI+f*Math.PI*2.4)),3);
-      const w2=Math.abs(Math.sin(f*Math.PI*4.5+t*1.1));
-      h=2+w1*32*edge+beat*28*edge*w2+beatVel*20*edge+Math.random()*6*beat*edge;
-    }else{
-      h=1.5+Math.sin(breathe*0.9+f*Math.PI*2)*2*edge;
-    }
-    const alpha=(0.18+0.65*edge*(active?0.3+beat*0.7:0.22)).toFixed(2);
-    b.style.height=Math.max(2,Math.round(h))+'px';
-    b.style.background=`rgba(${rgb},${alpha})`;
-  });
+  const spd = active ? 1.0 : 0.35;
+  t       += 0.013 * spd;
+  breathe += 0.013 * 0.40;
+  const lerp = (a, b, k) => a + (b - a) * k;
+  const bpm      = active ? 80 : 22;
+  beatPhase     += 0.013 * (bpm / 60) * spd;
+  const rawBeat  = Math.max(0, Math.cos(beatPhase * Math.PI * 2));
+  beatEnv        = lerp(beatEnv, rawBeat * rawBeat, active ? 0.10 : 0.03);
+  const targetScale = 1.0
+    + (active ? 0.040 : 0.014) * Math.sin(breathe * Math.PI)
+    + (active ? beatEnv * 0.050 : 0);
+  smoothScale = lerp(smoothScale, targetScale, 0.065);
+  const targetY = (active ? 5.5 : 2.0) * Math.sin(t * 0.46 * Math.PI)
+                + (active ? beatEnv * -2.0 : 0);
+  smoothY = lerp(smoothY, targetY, 0.042);
+  const targetX = (active ? 1.8 : 0.7) * Math.sin(t * 0.30 * Math.PI + 1.1);
+  smoothX = lerp(smoothX, targetX, 0.032);
+  rotSpeed = lerp(rotSpeed, active ? 0.052 + beatEnv * 0.028 : 0.014, 0.028);
+  contRot += rotSpeed;
+  mx       = lerp(mx, curX, 0.038);
+  imgEl.style.transform =
+    `translateY(${smoothY.toFixed(2)}px) ` +
+    `translateX(${smoothX.toFixed(2)}px) ` +
+    `scale(${smoothScale.toFixed(4)}) ` +
+    `rotate(${(contRot + mx * 2.8).toFixed(2)}deg)`;
+  imgEl.style.opacity = '1';
+  const bv = Math.max(0.08, beatEnv * 0.85 + 0.08);
+  for(let i = 0; i < bars.length; i++){
+    const wave = bv * (0.4 + 0.6 * Math.abs(Math.sin(breathe * 2.5 + i * 0.32)));
+    bars[i].style.opacity = Math.max(0.06, Math.min(1, wave)).toFixed(2);
+  }
 }
 animate();
 </script>
