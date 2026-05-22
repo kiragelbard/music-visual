@@ -97,10 +97,7 @@ const ORDER  = ["star", "blob", "ring", "twist", "donut"];
 const NAMES  = {'star':'star','blob':'blob','twist':'twist','ring':'ring','donut':'donut'};
 
 let idx=0, playing=false, muted=false;
-let t=0, breathe=0;
-let smoothScale=1.0, smoothY=0, smoothX=0;
-let beatPhase=0, beatEnv=0;
-let rotSpeed=0, contRot=0, mx=0;
+let t=0, smoothScale=1, smoothY=0, smoothX=0, beatPhase=0, beatEnv=0, rotSpeed=0, contRot=0;
 let isMobile = window.innerWidth<=480;
 window.addEventListener('resize',()=>{isMobile=window.innerWidth<=480;});
 
@@ -190,40 +187,70 @@ stage.addEventListener('touchmove',e=>{
 },{passive:true});
 stage.addEventListener('touchend',()=>{mx=0;my=0;});
 
-function animate(){
+function animate() {
   requestAnimationFrame(animate);
-  const active = playing && !muted;
-  const spd = active ? 1.0 : 0.35;
-  t       += 0.013 * spd;
-  breathe += 0.013 * 0.40;
-  const lerp = (a, b, k) => a + (b - a) * k;
-  const bpm      = active ? 80 : 22;
-  beatPhase     += 0.013 * (bpm / 60) * spd;
-  const rawBeat  = Math.max(0, Math.cos(beatPhase * Math.PI * 2));
-  beatEnv        = lerp(beatEnv, rawBeat * rawBeat, active ? 0.10 : 0.03);
-  const targetScale = 1.0
-    + (active ? 0.040 : 0.014) * Math.sin(breathe * Math.PI)
-    + (active ? beatEnv * 0.050 : 0);
-  smoothScale = lerp(smoothScale, targetScale, 0.065);
-  const targetY = (active ? 5.5 : 2.0) * Math.sin(t * 0.46 * Math.PI)
-                + (active ? beatEnv * -2.0 : 0);
-  smoothY = lerp(smoothY, targetY, 0.042);
-  const targetX = (active ? 1.8 : 0.7) * Math.sin(t * 0.30 * Math.PI + 1.1);
-  smoothX = lerp(smoothX, targetX, 0.032);
-  rotSpeed = lerp(rotSpeed, active ? 0.052 + beatEnv * 0.028 : 0.014, 0.028);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Smooth beat at ~80 BPM using cosine envelope
+  const bpm = 80;
+  const bps = bpm / 60;
+  t += 1/60;
+  beatPhase = (t * bps) % 1;
+
+  // Cosine-squared envelope: smooth rise and fall, peaks once per beat
+  const rawEnv = beatPhase < 0.5
+    ? Math.pow(Math.cos((beatPhase - 0.25) * Math.PI * 2), 2)
+    : 0;
+  beatEnv += (rawEnv - beatEnv) * 0.12;
+
+  // Lerp all values for organic smoothness
+  const targetScale = 1 + beatEnv * 0.18;
+  const targetY = beatEnv * (isMobile ? -18 : -28);
+  const targetX = Math.sin(t * 0.4) * (isMobile ? 8 : 14);
+  smoothScale += (targetScale - smoothScale) * 0.08;
+  smoothY += (targetY - smoothY) * 0.08;
+  smoothX += (targetX - smoothX) * 0.06;
+
+  // Continuous gentle rotation, nudges faster on beat
+  rotSpeed += (0.003 + beatEnv * 0.012 - rotSpeed) * 0.05;
   contRot += rotSpeed;
-  mx       = lerp(mx, curX, 0.038);
-  imgEl.style.transform =
-    `translateY(${smoothY.toFixed(2)}px) ` +
-    `translateX(${smoothX.toFixed(2)}px) ` +
-    `scale(${smoothScale.toFixed(4)}) ` +
-    `rotate(${(contRot + mx * 2.8).toFixed(2)}deg)`;
-  imgEl.style.opacity = '1';
-  const bv = Math.max(0.08, beatEnv * 0.85 + 0.08);
-  for(let i = 0; i < bars.length; i++){
-    const wave = bv * (0.4 + 0.6 * Math.abs(Math.sin(breathe * 2.5 + i * 0.32)));
-    bars[i].style.opacity = Math.max(0.06, Math.min(1, wave)).toFixed(2);
+
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+
+  ctx.save();
+  ctx.translate(cx + smoothX, cy + (isMobile ? 60 : 80) + smoothY);
+  ctx.rotate(contRot);
+  ctx.scale(smoothScale, smoothScale);
+  const s = isMobile ? 90 : 140;
+  ctx.drawImage(imgEl, -s/2, -s/2, s, s);
+  ctx.restore();
+
+  // Beat bars — smooth ripple using beatEnv
+  const barCount = isMobile ? 6 : 9;
+  const barW = isMobile ? 3 : 5;
+  const spacing = isMobile ? 18 : 28;
+  const maxH = isMobile ? 55 : 85;
+  const baseH = isMobile ? 10 : 16;
+  const barY = isMobile ? canvas.height * 0.82 : canvas.height * 0.85;
+  const startX = cx - (barCount - 1) * spacing / 2;
+
+  for(let i = 0; i < barCount; i++) {
+    // Each bar peaks at slightly different time for ripple effect
+    const offset = Math.abs(i - (barCount-1)/2) / (barCount/2);
+    const phase = ((t * bps + offset * 0.3) % 1);
+    const env = phase < 0.5
+      ? Math.pow(Math.cos((phase - 0.25) * Math.PI * 2), 2)
+      : 0;
+    const h = baseH + env * (maxH - baseH);
+    const alpha = 0.35 + env * 0.55;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.roundRect(startX + i * spacing - barW/2, barY - h/2, barW, h, barW/2);
+    ctx.fill();
   }
+  ctx.globalAlpha = 1;
 }
 animate();
 </script>
