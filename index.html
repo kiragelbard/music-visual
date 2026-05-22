@@ -97,7 +97,7 @@ const ORDER  = ["star", "blob", "ring", "twist", "donut"];
 const NAMES  = {'star':'star','blob':'blob','twist':'twist','ring':'ring','donut':'donut'};
 
 let idx=0, playing=false, muted=false;
-let t=0, smoothScale=1, smoothY=0, smoothX=0, beatPhase=0, beatEnv=0, rotSpeed=0, contRot=0;
+let t=0, beat=0, beatVel=0, breathe=0;
 let isMobile = window.innerWidth<=480;
 window.addEventListener('resize',()=>{isMobile=window.innerWidth<=480;});
 
@@ -187,70 +187,43 @@ stage.addEventListener('touchmove',e=>{
 },{passive:true});
 stage.addEventListener('touchend',()=>{mx=0;my=0;});
 
-function animate() {
+function animate(){
   requestAnimationFrame(animate);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const active = playing && !muted;
+  const spd = active?1.0:0.3;
+  t+=0.016*spd; breathe+=0.016*0.55;
 
-  // Smooth beat at ~80 BPM using cosine envelope
-  const bpm = 80;
-  const bps = bpm / 60;
-  t += 1/60;
-  beatPhase = (t * bps) % 1;
+  const bps=active?1.33:0.5;
+  const raw=(()=>{const ph=(t*bps)%1;return ph<0.5?Math.pow(Math.cos((ph-0.25)*Math.PI*2),2):0;})();
+  beatVel+=(raw-beat)*0.6; beatVel*=0.58;
+  beat+=beatVel; beat=Math.max(0,Math.min(1.2,beat));
 
-  // Cosine-squared envelope: smooth rise and fall, peaks once per beat
-  const rawEnv = beatPhase < 0.5
-    ? Math.pow(Math.cos((beatPhase - 0.25) * Math.PI * 2), 2)
-    : 0;
-  beatEnv += (rawEnv - beatEnv) * 0.12;
+  const ps=isMobile?12:24;
+  curX+=(mx*ps-curX)*0.07;
+  curY+=(my*(isMobile?8:16)-curY)*0.07;
 
-  // Lerp all values for organic smoothness
-  const targetScale = 1 + beatEnv * 0.18;
-  const targetY = beatEnv * (isMobile ? -18 : -28);
-  const targetX = Math.sin(t * 0.4) * (isMobile ? 8 : 14);
-  smoothScale += (targetScale - smoothScale) * 0.08;
-  smoothY += (targetY - smoothY) * 0.08;
-  smoothX += (targetX - smoothX) * 0.06;
+  const breatheScale=1+Math.sin(breathe)*0.025;
+  const sc=breatheScale+(active?beat*0.14:0.02*Math.sin(breathe));
+  const floatY=Math.sin(t*0.85)*(active?(isMobile?8:12):(isMobile?2:4));
+  const beatDrop=active?-beat*(isMobile?18:26):0;
+  const rot=curX*(isMobile?0.4:0.8);
+  imgEl.style.transform=`translateY(${(curY+floatY+beatDrop).toFixed(2)}px) translateX(${curX.toFixed(2)}px) scale(${sc.toFixed(4)}) rotate(${rot.toFixed(2)}deg)`;
 
-  // Continuous gentle rotation, nudges faster on beat
-  rotSpeed += (0.003 + beatEnv * 0.012 - rotSpeed) * 0.05;
-  contRot += rotSpeed;
-
-  const cx = canvas.width / 2;
-  const cy = canvas.height / 2;
-
-  ctx.save();
-  ctx.translate(cx + smoothX, cy + (isMobile ? 60 : 80) + smoothY);
-  ctx.rotate(contRot);
-  ctx.scale(smoothScale, smoothScale);
-  const s = isMobile ? 90 : 140;
-  ctx.drawImage(imgEl, -s/2, -s/2, s, s);
-  ctx.restore();
-
-  // Beat bars — smooth ripple using beatEnv
-  const barCount = isMobile ? 6 : 9;
-  const barW = isMobile ? 3 : 5;
-  const spacing = isMobile ? 18 : 28;
-  const maxH = isMobile ? 55 : 85;
-  const baseH = isMobile ? 10 : 16;
-  const barY = isMobile ? canvas.height * 0.82 : canvas.height * 0.85;
-  const startX = cx - (barCount - 1) * spacing / 2;
-
-  for(let i = 0; i < barCount; i++) {
-    // Each bar peaks at slightly different time for ripple effect
-    const offset = Math.abs(i - (barCount-1)/2) / (barCount/2);
-    const phase = ((t * bps + offset * 0.3) % 1);
-    const env = phase < 0.5
-      ? Math.pow(Math.cos((phase - 0.25) * Math.PI * 2), 2)
-      : 0;
-    const h = baseH + env * (maxH - baseH);
-    const alpha = 0.35 + env * 0.55;
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.roundRect(startX + i * spacing - barW/2, barY - h/2, barW, h, barW/2);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
+  const rgb=COLORS[ORDER[idx]].bar;
+  bars.forEach((b,i)=>{
+    const f=i/N,edge=Math.sin(f*Math.PI);
+    let h;
+    if(active){
+      const w1=Math.pow(Math.max(0,Math.sin(t*bps*Math.PI+f*Math.PI*2.4)),3);
+      const w2=Math.abs(Math.sin(f*Math.PI*4.5+t*1.1));
+      h=2+w1*32*edge+beat*28*edge*w2+beatVel*20*edge+Math.random()*6*beat*edge;
+    }else{
+      h=1.5+Math.sin(breathe*0.9+f*Math.PI*2)*2*edge;
+    }
+    const alpha=(0.18+0.65*edge*(active?0.3+beat*0.7:0.22)).toFixed(2);
+    b.style.height=Math.max(2,Math.round(h))+'px';
+    b.style.background=`rgba(${rgb},${alpha})`;
+  });
 }
 animate();
 </script>
