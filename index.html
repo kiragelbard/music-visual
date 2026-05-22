@@ -193,8 +193,8 @@ function animate(){
   const spd = active?1.0:0.3;
   t+=0.016*spd; breathe+=0.016*0.55;
 
-  const bps=active?2.1:0.5;
-  const raw=Math.max(0,Math.pow(Math.sin(t*bps*Math.PI),6));
+  const bps=active?1.33:0.5;
+  const raw=(()=>{const ph=(t*bps)%1;return ph<0.5?Math.pow(Math.cos((ph-0.25)*Math.PI*2),2):0;})();
   beatVel+=(raw-beat)*0.6; beatVel*=0.58;
   beat+=beatVel; beat=Math.max(0,Math.min(1.2,beat));
 
